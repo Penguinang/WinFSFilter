@@ -54,6 +54,7 @@ dkms.conf
 
 #IDE Files
 /WinFSFilter/.vs/
+/DriverSetup/.vs/
 
 # Test Files
 test.c
@@ -65,3 +66,7 @@ WinFSFilter/x64/
 /WinFSFilter/WinFSFilter/x64/
 /WinFSFilter/WinFSFilter/Debug/
 
+DriverSetup/x64/
+DriverSetup/Debug/
+DriverSetup/DriverSetup/x64/
+DriverSetup/DriverSetup/Debug/

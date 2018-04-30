@@ -24,9 +24,9 @@
 		_In_ FLT_POST_OPERATION_FLAGS Flags\
 	);
 
-// Simulate Config
-#define SP_DIR "C:\\1\\"
-#define READ_ACCESS 0
-#define WRITE_ACCESS 1
-#define DELETE_ACCESS 0
-#define TARGET L"\\Device\\HarddiskVolume2\\1\\"
+#define CONFIG_FILE L"\\Device\\HarddiskVolume2\\user.txt"
+
+int READ_ACCESS = 1;
+int WRITE_ACCESS = 1;
+int DELETE_ACCESS = 1;
+wchar_t *TARGET = L"\\Device\\HarddiskVolume2\\1\\";

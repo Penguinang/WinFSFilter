@@ -130,6 +130,7 @@ FLT_POSTOP_FUNC(PostMyRead);
 FLT_PREOP_FUNC(PreMyDelete);
 FLT_POSTOP_FUNC(PostMyDelete);
 
+void LoadConfig();
 
 /*************************************************************************
 	Prototypes End
@@ -576,6 +577,12 @@ Return Value:
                   ("WinFSFilter!DriverEntry: Entered\n") );
 	FORCE_DBG_PRINT(("My Force Print  Get WinFSFilter DriverEntry Entered\n"));
 
+	LoadConfig();
+	if (TARGET == NULL) {
+		FORCE_DBG_PRINT("Driver Didn't Start\n");
+		//return STATUS_SUCCESS;
+	}
+
     //
     //  Register with FltMgr to tell it our callback routines
     //
@@ -909,11 +916,65 @@ Return Value:
              );
 }
 
+// 
+// My Functions
+// 
+
+// Open config file and get config at driver entry
+void LoadConfig() {
+	UNICODE_STRING     uniName;
+	OBJECT_ATTRIBUTES  objAttr;
+
+	RtlInitUnicodeString(&uniName, CONFIG_FILE);
+	InitializeObjectAttributes(&objAttr, &uniName,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL, NULL);
+
+	HANDLE   handle;
+	NTSTATUS ntstatus;
+	IO_STATUS_BLOCK    ioStatusBlock;
+	if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+		return;
+
+	ntstatus = ZwCreateFile(&handle,
+		GENERIC_READ,
+		&objAttr, &ioStatusBlock, NULL,
+		FILE_ATTRIBUTE_NORMAL,
+		FILE_SHARE_WRITE,
+		FILE_OPEN,
+		FILE_SYNCHRONOUS_IO_NONALERT,
+		NULL, 0);
+	if (!NT_SUCCESS(ntstatus)) {
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Fail To Open Config,%x\n",ntstatus);
+	}
+	else {
+#define  BUFFER_SIZE 1024
+		CHAR buffer[BUFFER_SIZE];
+		LARGE_INTEGER byteOffset;
+		byteOffset.LowPart = byteOffset.HighPart = 0;
+		ntstatus = ZwReadFile(handle, NULL, NULL, NULL, &ioStatusBlock,
+			buffer, BUFFER_SIZE, &byteOffset, NULL);
+		if (NT_SUCCESS(ntstatus)) {
+			buffer[BUFFER_SIZE - 1] = '\0';
+			DbgPrint("Get Config : %s\n", buffer);
+		}
+		ZwClose(handle);
+
+		if (!strstr(buffer, "read_true"))
+			READ_ACCESS = 0;
+		if (!strstr(buffer, "write_true"))
+			WRITE_ACCESS = 0;
+		if (!strstr(buffer, "delete_true"))
+			DELETE_ACCESS = 0;
+	}
+}
+
 //
 // My Callbacks 
 //
 
-// Intercept opening target files with writing, reading and direct deletion(del) rights
+// Intercept opening target files with writing, reading and direct deletion(del) rights 
+// or opening config files with writing and direct deletion(del) rights 
 FLT_PREOP_CALLBACK_STATUS
 PreMyCreate(
 	_Inout_ PFLT_CALLBACK_DATA Data,
@@ -925,31 +986,49 @@ PreMyCreate(
 	UNREFERENCED_PARAMETER(FltObjects);
 	PAGED_CODE();
 
+	if (!TARGET)
+		return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+
 	wchar_t *dir = TARGET;
 	PFLT_FILE_NAME_INFORMATION n, o;
 	PFLT_FILE_NAME_INFORMATION i;
-	NTSTATUS status;	
+	NTSTATUS status;
+	int isTarget = 0, isConfig = 0;	
 
-	if ((!READ_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA) || 
-		(!WRITE_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) || 
-		(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
-		status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-		if (NT_SUCCESS(status)) {
-			o = InterlockedExchangePointer(&i, n);
-			if (NULL != i) {
-				FltReleaseFileNameInformation(i);
-			}
+	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+	if (NT_SUCCESS(status)) {
+		o = InterlockedExchangePointer(&i, n);
+		if (NULL != i) {
+			FltReleaseFileNameInformation(i);
+		}
 
-			wchar_t *p = wcsstr(n->Name.Buffer, dir);
-			if (p != NULL) {
-				// Disallow
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Create%s%s%s IO ,%wZ\n", 
-					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA ? " Read" : "", 
-					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
-					Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "",
-					n->Name);
-				return FLT_PREOP_COMPLETE;
-			}
+		if (wcsstr(n->Name.Buffer, dir))
+			isTarget = 1;
+		if (wcsstr(n->Name.Buffer, CONFIG_FILE))
+			isConfig = 1;
+	}
+
+	// If is config file
+	if (isConfig) {
+		if ((Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) ||
+			(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon Config File Create%s%s IO \n",
+				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
+				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "");
+			return FLT_PREOP_COMPLETE;
+		}
+	}
+	// Or is target file
+	else if (isTarget) {
+		if ((!READ_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA) ||
+			(!WRITE_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) ||
+			(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Create%s%s%s IO ,%wZ\n",
+				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA ? " Read" : "",
+				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
+				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "",
+				n->Name);
+			return FLT_PREOP_COMPLETE;
 		}
 	}
 
@@ -981,7 +1060,7 @@ PreMyWrite(
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
-
+	if(TARGET)
 	if (!WRITE_ACCESS) {
 		wchar_t *dir = TARGET;
 		PFLT_FILE_NAME_INFORMATION n, o;
@@ -995,8 +1074,14 @@ PreMyWrite(
 
 			wchar_t *p = wcsstr(n->Name.Buffer, dir);
 			if (p != NULL) {
-				// Disallow
+				// Disallow Target File IO
 				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
+				return FLT_PREOP_COMPLETE;
+			}
+			p = wcsstr(n->Name.Buffer, CONFIG_FILE);
+			if (p != NULL) {
+				// Disallow Config File IO
+				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Write IO\n");
 				return FLT_PREOP_COMPLETE;
 			}
 		}
@@ -1030,7 +1115,7 @@ PreMyRead(
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
-
+	if(TARGET)
 	if (!READ_ACCESS) {
 		wchar_t *dir = TARGET;
 		PFLT_FILE_NAME_INFORMATION n, o;
@@ -1070,7 +1155,6 @@ PostMyRead(
 
 }
 
-
 // Intercept moving operation about target files,including moving to recycled
 FLT_PREOP_CALLBACK_STATUS
 PreMyDelete(
@@ -1082,7 +1166,7 @@ PreMyDelete(
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
 	PAGED_CODE();
-
+	if(TARGET)
 	if (!DELETE_ACCESS) {
 		wchar_t *dir = TARGET;
 		PFLT_FILE_NAME_INFORMATION n, o;
@@ -1101,8 +1185,14 @@ PreMyDelete(
 				}
 				wchar_t *p = wcsstr(n->Name.Buffer, dir);
 				if (p != NULL) {
-					// Disallow
+					// Disallow Target File IO
 					DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
+					return FLT_PREOP_COMPLETE;
+				}
+				p = wcsstr(n->Name.Buffer, CONFIG_FILE);
+				if (p != NULL) {
+					// Disallow Config File IO
+					DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
 					return FLT_PREOP_COMPLETE;
 				}
 			}

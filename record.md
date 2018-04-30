@@ -58,3 +58,4 @@
 	
 	,原来这个权限中还包含了对`ATTRIBUTES`等其他内容读取，而打开文件写入时是会读取这些额外信息的。所以拦截文件读取时，只拦截`FILE_READ_DATA`即可。
 * 文件直接删除，其本质是打开文件并且使用`DELETE_ON_CLOSE`参数，所以只要在`IRP_MJ_CREATE`里面检测包含`DELETE_ON_CLOSE`的操作并拦截就可以了。
+* 使用`zwCreateFile`打开配置文件，读取配置。
