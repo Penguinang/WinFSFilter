@@ -47,14 +47,12 @@
 	+ google 发现有人说这两个参数不是一回事，换句话说，`GENERIC_READ`并不是真正的`ACCESS_MASK`,系统最终会将`GENERIC_READ`映射为`FILE_GENERIC_READ`，所以最终驱动看到的是`FILE_GENERIC_READ`。
 	+ 换用`FILE_GENERIC_READ`检查读取文件的操作，成功。
 	+ 发现使用写模式打开的文件还是可以截获到`FILE_GENERIC_READ`。打开`FILE_GENERIC_READ`的定义看到
-
-
+	```C
 		#define FILE_GENERIC_READ         (STANDARD_RIGHTS_READ     |\
 		                                   FILE_READ_DATA           |\
 		                                   FILE_READ_ATTRIBUTES     |\
 		                                   FILE_READ_EA             |\
-		                                   SYNCHRONIZE)
-
-	
+		                                   SYNCHRONIZE)	
+	```						  
 	,原来这个权限中还包含了对`ATTRIBUTES`等其他内容读取，而打开文件写入时是会读取这些额外信息的。所以拦截文件读取时，只拦截`FILE_READ_DATA`即可。
 * 文件直接删除，其本质是打开文件并且使用`DELETE_ON_CLOSE`参数，所以只要在`IRP_MJ_CREATE`里面检测包含`DELETE_ON_CLOSE`的操作并拦截就可以了。
