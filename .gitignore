@@ -41,6 +41,7 @@
 *.su
 *.idb
 *.pdb
+*.tlog
 
 # Kernel Module Compile Results
 *.mod*
@@ -51,5 +52,16 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-/WinFSFilter/x64
+#IDE Files
+/WinFSFilter/.vs/
+
+# Test Files
+test.c
+test.obj
+test.exe
+
+WinFSFilter/x64/
 /WinFSFilter/Debug/
+/WinFSFilter/WinFSFilter/x64/
+/WinFSFilter/WinFSFilter/Debug/
+

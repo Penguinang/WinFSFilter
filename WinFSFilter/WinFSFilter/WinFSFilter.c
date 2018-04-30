@@ -913,8 +913,7 @@ Return Value:
 // My Callbacks 
 //
 
-// TODO 
-// Î´²âÊÔ
+// Intercept opening target files with writing, reading and direct deletion(del) rights
 FLT_PREOP_CALLBACK_STATUS
 PreMyCreate(
 	_Inout_ PFLT_CALLBACK_DATA Data,
@@ -929,10 +928,11 @@ PreMyCreate(
 	wchar_t *dir = TARGET;
 	PFLT_FILE_NAME_INFORMATION n, o;
 	PFLT_FILE_NAME_INFORMATION i;
-	NTSTATUS status;
+	NTSTATUS status;	
 
-	if ((!READ_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & GENERIC_READ) || 
-		(!WRITE_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & GENERIC_WRITE)) {
+	if ((!READ_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA) || 
+		(!WRITE_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) || 
+		(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
 		status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
 		if (NT_SUCCESS(status)) {
 			o = InterlockedExchangePointer(&i, n);
@@ -943,9 +943,10 @@ PreMyCreate(
 			wchar_t *p = wcsstr(n->Name.Buffer, dir);
 			if (p != NULL) {
 				// Disallow
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Create %s %s IO ,%wZ\n", 
-					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & GENERIC_READ ? "Read" : "", 
-					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & GENERIC_WRITE ? "Write" : "",
+				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Create%s%s%s IO ,%wZ\n", 
+					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA ? " Read" : "", 
+					Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
+					Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "",
 					n->Name);
 				return FLT_PREOP_COMPLETE;
 			}
@@ -970,8 +971,7 @@ PostMyCreate(
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-// TODO 
-// Sometime may clear file
+// Intercept writing to target files
 FLT_PREOP_CALLBACK_STATUS
 PreMyWrite(
 	_Inout_ PFLT_CALLBACK_DATA Data,
@@ -982,21 +982,23 @@ PreMyWrite(
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
 
-	wchar_t *dir = TARGET;
-	PFLT_FILE_NAME_INFORMATION n, o;
-	PFLT_FILE_NAME_INFORMATION i;
-	NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-	if (NT_SUCCESS(status)) {
-		o = InterlockedExchangePointer(&i, n);
-		if (NULL != i) {
-			FltReleaseFileNameInformation(i);
-		}
+	if (!WRITE_ACCESS) {
+		wchar_t *dir = TARGET;
+		PFLT_FILE_NAME_INFORMATION n, o;
+		PFLT_FILE_NAME_INFORMATION i;
+		NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+		if (NT_SUCCESS(status)) {
+			o = InterlockedExchangePointer(&i, n);
+			if (NULL != i) {
+				FltReleaseFileNameInformation(i);
+			}
 
-		wchar_t *p = wcsstr(n->Name.Buffer, dir);
-		if (p != NULL) {
-			// Disallow
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
-			return FLT_PREOP_COMPLETE;
+			wchar_t *p = wcsstr(n->Name.Buffer, dir);
+			if (p != NULL) {
+				// Disallow
+				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
+				return FLT_PREOP_COMPLETE;
+			}
 		}
 	}
 
@@ -1018,8 +1020,7 @@ PostMyWrite(
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-// TODO
-// Cant prevent notepad
+// Intercept reading from target files
 FLT_PREOP_CALLBACK_STATUS
 PreMyRead(
 	_Inout_ PFLT_CALLBACK_DATA Data,
@@ -1029,24 +1030,24 @@ PreMyRead(
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
-	wchar_t *dir = L"\\Device\\HarddiskVolume2\\2\\";
-	PFLT_FILE_NAME_INFORMATION n, o;
-	PFLT_FILE_NAME_INFORMATION i;
-	NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-	if (NT_SUCCESS(status)) {
-		o = InterlockedExchangePointer(&i, n);
-		if (NULL != i) {
-			FltReleaseFileNameInformation(i);
-		}
 
-		wchar_t *p = wcsstr(n->Name.Buffer, dir);
-		if (p != NULL) {
-			// Disallow
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
-			return FLT_PREOP_COMPLETE;
-		}
-		else {
-			//DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Pass A File Read IO ,%wZ\n", n->Name);
+	if (!READ_ACCESS) {
+		wchar_t *dir = TARGET;
+		PFLT_FILE_NAME_INFORMATION n, o;
+		PFLT_FILE_NAME_INFORMATION i;
+		NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+		if (NT_SUCCESS(status)) {
+			o = InterlockedExchangePointer(&i, n);
+			if (NULL != i) {
+				FltReleaseFileNameInformation(i);
+			}
+
+			wchar_t *p = wcsstr(n->Name.Buffer, dir);
+			if (p != NULL) {
+				// Disallow
+				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
+				return FLT_PREOP_COMPLETE;
+			}
 		}
 	}
 
@@ -1069,6 +1070,8 @@ PostMyRead(
 
 }
 
+
+// Intercept moving operation about target files,including moving to recycled
 FLT_PREOP_CALLBACK_STATUS
 PreMyDelete(
 	_Inout_ PFLT_CALLBACK_DATA Data,
@@ -1080,29 +1083,32 @@ PreMyDelete(
 	UNREFERENCED_PARAMETER(FltObjects);
 	PAGED_CODE();
 
-	wchar_t *dir = L"\\Device\\HarddiskVolume2\\1\\";
-	PFLT_FILE_NAME_INFORMATION n, o;
-	PFLT_FILE_NAME_INFORMATION i;
-	NTSTATUS status;
-	FILE_INFORMATION_CLASS;
-	// If this a deletion
-	if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformation ||
-		Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformationEx || 
-		Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformation) {
-		status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-		if (NT_SUCCESS(status)) {
-			o = InterlockedExchangePointer(&i, n);
-			if (NULL != i) {
-				FltReleaseFileNameInformation(i);
-			}
-			wchar_t *p = wcsstr(n->Name.Buffer, dir);
-			if (p != NULL) {
-				// Disallow
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
-				return FLT_PREOP_COMPLETE;
+	if (!DELETE_ACCESS) {
+		wchar_t *dir = TARGET;
+		PFLT_FILE_NAME_INFORMATION n, o;
+		PFLT_FILE_NAME_INFORMATION i;
+		NTSTATUS status;
+		FILE_INFORMATION_CLASS;
+		// If this a deletion
+		if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformation ||
+			Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformationEx ||
+			Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformation) {
+			status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+			if (NT_SUCCESS(status)) {
+				o = InterlockedExchangePointer(&i, n);
+				if (NULL != i) {
+					FltReleaseFileNameInformation(i);
+				}
+				wchar_t *p = wcsstr(n->Name.Buffer, dir);
+				if (p != NULL) {
+					// Disallow
+					DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
+					return FLT_PREOP_COMPLETE;
+				}
 			}
 		}
 	}
+
 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 

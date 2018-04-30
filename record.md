@@ -39,3 +39,22 @@
 * 文件读取，拦截`IRP_MJ_READ`
 * 文件写入，拦截`IRP_MJ_WRITE`
 * 文件回收，拦截`IRP_MJ_SET_INFORMATION`中`FileDispositionInformation`,`FileDispositionInformationEx`,`FileRenameInformation`三种操作
+* 关于`ACCESS_MASK`过滤`IRP_MJ_CREATE`时候遇到的问题(`CREATE`相当于`c`的`fopen`):
+	+ 在`IRP_MJ_CREATE`的请求中，参数的一个成员(`Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess`)是文件的打开权限，想到可以从此监控文件
+	+ 又想到了 WIN 中另一个 API `CreateFile`，在这个函数中也有叫做`dwDesiredAccess`的参数，这两个参数是不是一样的？试着这样理解，并且实践
+	+ 实践中，发现使用`GENERIC_READ`不能正确检查出`CREATE`请求中包含`READ`的操作，`GENERIC_WRITE`也是。(`GENERIC_READ`和`GENERIC_WRITE`是`dwDesiredAccess`的取值之一，是windows中使用`CreateFile`打开文件使用的权限标志)
+	+ 自己使用`CreateFile`指定权限来打开文件，使用驱动监测，得到了实际获得的权限值，与`GENERIC_READ`对比，确实不同。
+	+ google 发现有人说这两个参数不是一回事，换句话说，`GENERIC_READ`并不是真正的`ACCESS_MASK`,系统最终会将`GENERIC_READ`映射为`FILE_GENERIC_READ`，所以最终驱动看到的是`FILE_GENERIC_READ`。
+	+ 换用`FILE_GENERIC_READ`检查读取文件的操作，成功。
+	+ 发现使用写模式打开的文件还是可以截获到`FILE_GENERIC_READ`。打开`FILE_GENERIC_READ`的定义看到
+
+
+		#define FILE_GENERIC_READ         (STANDARD_RIGHTS_READ     |\
+		                                   FILE_READ_DATA           |\
+		                                   FILE_READ_ATTRIBUTES     |\
+		                                   FILE_READ_EA             |\
+		                                   SYNCHRONIZE)
+
+	
+	,原来这个权限中还包含了对`ATTRIBUTES`等其他内容读取，而打开文件写入时是会读取这些额外信息的。所以拦截文件读取时，只拦截`FILE_READ_DATA`即可。
+* 文件直接删除，其本质是打开文件并且使用`DELETE_ON_CLOSE`参数，所以只要在`IRP_MJ_CREATE`里面检测包含`DELETE_ON_CLOSE`的操作并拦截就可以了。
