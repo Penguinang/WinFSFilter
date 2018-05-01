@@ -25,8 +25,12 @@
 	);
 
 #define CONFIG_FILE L"\\Device\\HarddiskVolume2\\user.txt"
+#define TARGET_CFG_FILE L"\\Device\\HarddiskVolume2\\WinFSFilter.cfg"
 
 int READ_ACCESS = 1;
 int WRITE_ACCESS = 1;
 int DELETE_ACCESS = 1;
-wchar_t *TARGET = L"\\Device\\HarddiskVolume2\\1\\";
+//wchar_t *TARGET = L"\\Device\\HarddiskVolume2\\1\\";
+#define  BUFFER_SIZE 1024
+wchar_t TARGET[BUFFER_SIZE] = { 0 };
+int IS_TARGET_FILE = 1;

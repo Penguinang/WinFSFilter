@@ -131,6 +131,7 @@ FLT_PREOP_FUNC(PreMyDelete);
 FLT_POSTOP_FUNC(PostMyDelete);
 
 void LoadConfig();
+void LoadTarget();
 
 /*************************************************************************
 	Prototypes End
@@ -577,10 +578,10 @@ Return Value:
                   ("WinFSFilter!DriverEntry: Entered\n") );
 	FORCE_DBG_PRINT(("My Force Print  Get WinFSFilter DriverEntry Entered\n"));
 
+	LoadTarget();
 	LoadConfig();
 	if (TARGET == NULL) {
 		FORCE_DBG_PRINT("Driver Didn't Start\n");
-		//return STATUS_SUCCESS;
 	}
 
     //
@@ -920,6 +921,58 @@ Return Value:
 // My Functions
 // 
 
+// Open C:\WinFSFilter to get target path
+void LoadTarget() {
+	UNICODE_STRING     uniName;
+	OBJECT_ATTRIBUTES  objAttr;
+
+	RtlInitUnicodeString(&uniName, TARGET_CFG_FILE);
+	InitializeObjectAttributes(&objAttr, &uniName,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL, NULL);
+
+	HANDLE   handle;
+	NTSTATUS ntstatus;
+	IO_STATUS_BLOCK    ioStatusBlock;
+	if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+		return;
+
+	ntstatus = ZwCreateFile(&handle,
+		GENERIC_READ,
+		&objAttr, &ioStatusBlock, NULL,
+		FILE_ATTRIBUTE_NORMAL,
+		FILE_SHARE_WRITE,
+		FILE_OPEN,
+		FILE_SYNCHRONOUS_IO_NONALERT,
+		NULL, 0);
+	if (!NT_SUCCESS(ntstatus)) {
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Fail To Open Target Config File, %x\n", ntstatus);
+	}
+	else {
+#define  BUFFER_SIZE 1024
+		LARGE_INTEGER byteOffset;
+
+		byteOffset.LowPart = byteOffset.HighPart = 0;
+		ntstatus = ZwReadFile(handle, NULL, NULL, NULL, &ioStatusBlock,
+			TARGET, BUFFER_SIZE, &byteOffset, NULL);
+		if (NT_SUCCESS(ntstatus)) {
+			TARGET[BUFFER_SIZE - 1] = '\0';
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Get Target Config : %ls\n", TARGET);
+		}
+		ZwClose(handle);
+		wchar_t *p = TARGET;
+		while (*(p + 1))
+			p++;
+		if (*p == '\\') {
+			IS_TARGET_FILE = 0;
+			FORCE_DBG_PRINT("Target is a directory\n");
+		}
+		else {
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Target Is File\n");
+		}
+	}
+}
+
 // Open config file and get config at driver entry
 void LoadConfig() {
 	UNICODE_STRING     uniName;
@@ -949,7 +1002,7 @@ void LoadConfig() {
 	}
 	else {
 #define  BUFFER_SIZE 1024
-		CHAR buffer[BUFFER_SIZE];
+		CHAR buffer[BUFFER_SIZE] = { 0 };
 		LARGE_INTEGER byteOffset;
 		byteOffset.LowPart = byteOffset.HighPart = 0;
 		ntstatus = ZwReadFile(handle, NULL, NULL, NULL, &ioStatusBlock,
@@ -986,14 +1039,10 @@ PreMyCreate(
 	UNREFERENCED_PARAMETER(FltObjects);
 	PAGED_CODE();
 
-	if (!TARGET)
-		return FLT_PREOP_SUCCESS_WITH_CALLBACK;
-
-	wchar_t *dir = TARGET;
 	PFLT_FILE_NAME_INFORMATION n, o;
 	PFLT_FILE_NAME_INFORMATION i;
 	NTSTATUS status;
-	int isTarget = 0, isConfig = 0;	
+	int isTarget = 0, isConfig = 0,isTargetConfig = 0;	
 
 	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
 	if (NT_SUCCESS(status)) {
@@ -1002,14 +1051,26 @@ PreMyCreate(
 			FltReleaseFileNameInformation(i);
 		}
 
-		if (wcsstr(n->Name.Buffer, dir))
-			isTarget = 1;
-		if (wcsstr(n->Name.Buffer, CONFIG_FILE))
-			isConfig = 1;
+		if(IS_TARGET_FILE){
+			if(!wcscmp(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (!wcscmp(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (!wcscmp(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
+		else {
+			if (wcsstr(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (wcsstr(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (wcsstr(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
 	}
 
-	// If is config file
-	if (isConfig) {
+	// If is config file or target config file
+	if (isConfig || isTargetConfig) {
 		if ((Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) ||
 			(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
 			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon Config File Create%s%s IO \n",
@@ -1060,31 +1121,47 @@ PreMyWrite(
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
-	if(TARGET)
-	if (!WRITE_ACCESS) {
-		wchar_t *dir = TARGET;
-		PFLT_FILE_NAME_INFORMATION n, o;
-		PFLT_FILE_NAME_INFORMATION i;
-		NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-		if (NT_SUCCESS(status)) {
-			o = InterlockedExchangePointer(&i, n);
-			if (NULL != i) {
-				FltReleaseFileNameInformation(i);
-			}
+	PAGED_CODE();
 
-			wchar_t *p = wcsstr(n->Name.Buffer, dir);
-			if (p != NULL) {
-				// Disallow Target File IO
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
-				return FLT_PREOP_COMPLETE;
-			}
-			p = wcsstr(n->Name.Buffer, CONFIG_FILE);
-			if (p != NULL) {
-				// Disallow Config File IO
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Write IO\n");
-				return FLT_PREOP_COMPLETE;
-			}
+	PFLT_FILE_NAME_INFORMATION n, o;
+	PFLT_FILE_NAME_INFORMATION i;
+	NTSTATUS status;
+	int isTarget = 0, isConfig = 0, isTargetConfig = 0;
+
+	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+	if (NT_SUCCESS(status)) {
+		o = InterlockedExchangePointer(&i, n);
+		if (NULL != i) {
+			FltReleaseFileNameInformation(i);
 		}
+
+		if (IS_TARGET_FILE) {
+			if (!wcscmp(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (!wcscmp(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (!wcscmp(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
+		else {
+			if (wcsstr(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (wcsstr(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (wcsstr(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
+	}
+
+	if (isTarget && !WRITE_ACCESS) {
+		// Disallow Target File IO
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
+		return FLT_PREOP_COMPLETE;
+	}
+	else if (isTargetConfig || isConfig) {
+		// Disallow Config File IO
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Write IO\n");
+		return FLT_PREOP_COMPLETE;
 	}
 
 	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
@@ -1115,25 +1192,33 @@ PreMyRead(
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
-	if(TARGET)
-	if (!READ_ACCESS) {
-		wchar_t *dir = TARGET;
-		PFLT_FILE_NAME_INFORMATION n, o;
-		PFLT_FILE_NAME_INFORMATION i;
-		NTSTATUS status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-		if (NT_SUCCESS(status)) {
-			o = InterlockedExchangePointer(&i, n);
-			if (NULL != i) {
-				FltReleaseFileNameInformation(i);
-			}
+	PAGED_CODE();
 
-			wchar_t *p = wcsstr(n->Name.Buffer, dir);
-			if (p != NULL) {
-				// Disallow
-				DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
-				return FLT_PREOP_COMPLETE;
-			}
+	PFLT_FILE_NAME_INFORMATION n, o;
+	PFLT_FILE_NAME_INFORMATION i;
+	NTSTATUS status;
+	int isTarget = 0;
+	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+	if (NT_SUCCESS(status)) {
+		o = InterlockedExchangePointer(&i, n);
+		if (NULL != i) {
+			FltReleaseFileNameInformation(i);
 		}
+
+		if (IS_TARGET_FILE) {
+			if (!wcscmp(n->Name.Buffer, TARGET))
+				isTarget = 1;
+		}
+		else {
+			if (wcsstr(n->Name.Buffer, TARGET))
+				isTarget = 1;
+		}
+	}
+
+	if (!READ_ACCESS && isTarget) {
+		// Disallow
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
+		return FLT_PREOP_COMPLETE;
 	}
 
 	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
@@ -1166,37 +1251,46 @@ PreMyDelete(
 	UNREFERENCED_PARAMETER(CompletionContext);
 	UNREFERENCED_PARAMETER(FltObjects);
 	PAGED_CODE();
-	if(TARGET)
-	if (!DELETE_ACCESS) {
-		wchar_t *dir = TARGET;
-		PFLT_FILE_NAME_INFORMATION n, o;
-		PFLT_FILE_NAME_INFORMATION i;
-		NTSTATUS status;
-		FILE_INFORMATION_CLASS;
-		// If this a deletion
-		if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformation ||
-			Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileDispositionInformationEx ||
-			Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformation) {
-			status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
-			if (NT_SUCCESS(status)) {
-				o = InterlockedExchangePointer(&i, n);
-				if (NULL != i) {
-					FltReleaseFileNameInformation(i);
-				}
-				wchar_t *p = wcsstr(n->Name.Buffer, dir);
-				if (p != NULL) {
-					// Disallow Target File IO
-					DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
-					return FLT_PREOP_COMPLETE;
-				}
-				p = wcsstr(n->Name.Buffer, CONFIG_FILE);
-				if (p != NULL) {
-					// Disallow Config File IO
-					DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
-					return FLT_PREOP_COMPLETE;
-				}
-			}
+
+	PFLT_FILE_NAME_INFORMATION n, o;
+	PFLT_FILE_NAME_INFORMATION i;
+	NTSTATUS status;
+	int isTarget = 0, isConfig = 0, isTargetConfig = 0;
+
+	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
+	if (NT_SUCCESS(status)) {
+		o = InterlockedExchangePointer(&i, n);
+		if (NULL != i) {
+			FltReleaseFileNameInformation(i);
 		}
+
+		if (IS_TARGET_FILE) {
+			if (!wcscmp(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (!wcscmp(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (!wcscmp(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
+		else {
+			if (wcsstr(n->Name.Buffer, TARGET))
+				isTarget = 1;
+			if (wcsstr(n->Name.Buffer, CONFIG_FILE))
+				isConfig = 1;
+			if (wcsstr(n->Name.Buffer, TARGET_CFG_FILE))
+				isTargetConfig = 1;
+		}
+	}
+
+	if (isTarget && !DELETE_ACCESS) {
+		// Disallow Target File IO
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
+		return FLT_PREOP_COMPLETE;
+	}
+	else if (isConfig || isTargetConfig) {
+		// Disallow Config File IO
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
+		return FLT_PREOP_COMPLETE;
 	}
 
 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
