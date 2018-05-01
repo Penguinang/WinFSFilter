@@ -1,4 +1,4 @@
-﻿### 准备
+### 准备
 1. 在网上找到了 `楚狂人` 写的一篇 [教程](http://file3.data.weipan.cn.wscdns.com/41553047/2471e7782fee3cedbaae7014a2e9c593beef9c18?ip=1524395329,222.20.30.243&ssig=NCVoxrsmQW&Expires=1524395929&KID=sae,l30zoo1wmz&fn=Windows%20%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F%E8%BF%87%E6%BB%A4%E9%A9%B1%E5%8A%A8%E5%BC%80%E5%8F%91%E6%95%99%E7%A8%8B%EF%BC%88%E7%AC%AC%E4%BA%8C%E7%89%88%EF%BC%89.pdf&skiprd=2&se_ip_debug=222.20.30.243&corp=2&from=1221134)
 2. 了解到作者当时所使用的`DDK`已经过去十几年了，现在已经发展为`WDK`，在微软官网下载[`WDK`](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)并安装
 3. 	
