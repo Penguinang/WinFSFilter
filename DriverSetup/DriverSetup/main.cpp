@@ -8,9 +8,6 @@
 And be sure directory ends with '\\'\n"
 
 void Install(char *TargetPath) {
-	// Use cmd command to install driver file
-	system("rundll32 setupapi,InstallHinfSection DefaultInstall 128 .\\WinFSFilter.inf");
-
 	// Transfer DOS device name to NT device name
 	char szNtDeviceName[MAX_PATH];
 	char DriveLetter[4] = { 0 };
@@ -44,6 +41,9 @@ void Install(char *TargetPath) {
 		WriteFile(hFile, WriteBuffer, l * sizeof(wchar_t), &w, NULL);
 	}
 	CloseHandle(hFile);
+
+	// Use cmd command to install driver file
+	system("rundll32 setupapi,InstallHinfSection DefaultInstall 128 .\\WinFSFilter.inf");
 
 	system("sc start winfsfilter");
 }

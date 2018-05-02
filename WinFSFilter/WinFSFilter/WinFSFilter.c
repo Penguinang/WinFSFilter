@@ -1152,6 +1152,10 @@ PreMyWrite(
 				isTargetConfig = 1;
 		}
 	}
+	// TODO 
+	// All access is not read correctly after startup, so it wont intercept any irp
+	//DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "DBG, status %d, isTarget %d, WRITE_ACCESS %d, READ_ACCESS %d, DELETE_ACCESS %d \n", 
+	//	status, isTarget, WRITE_ACCESS, READ_ACCESS, DELETE_ACCESS);
 
 	if (isTarget && !WRITE_ACCESS) {
 		// Disallow Target File IO
