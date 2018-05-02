@@ -1,10 +1,10 @@
 # WinFSFilter
 A simple FS filter,which can intercept IO operation and decide whether execute it,by which you can protect your data against change.
 
-#Before Use
+# Before Use
 By now, we cant sign for this driver, which means if you want to try it, you must enable windows testsigning mode by cmd command `bcdedit /set testsigning on`with admin authority.
 
-#Install
+# Install
 * Download and install [`WDK`](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (need to install VS before this).
 * Open these two project's .sln file with Visual Studio, and choose a proper target and config to compile.
 * Write a config file at `C:\` with name `user.txt`, and format is as bellow
