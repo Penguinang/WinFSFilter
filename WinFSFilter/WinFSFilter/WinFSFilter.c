@@ -574,14 +574,12 @@ Return Value:
 
     UNREFERENCED_PARAMETER( RegistryPath );
 
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("WinFSFilter!DriverEntry: Entered\n") );
-	FORCE_DBG_PRINT(("My Force Print  Get WinFSFilter DriverEntry Entered\n"));
+	DPRINT(CUR_LEVEL, "My Force Print  Get WinFSFilter DriverEntry Entered\n");
 
 	LoadTarget();
 	LoadConfig();
 	if (TARGET == NULL) {
-		FORCE_DBG_PRINT("Driver Didn't Start\n");
+		DPRINT(CUR_LEVEL,"Driver Didn't Start\n");
 	}
 
     //
@@ -946,7 +944,7 @@ void LoadTarget() {
 		FILE_SYNCHRONOUS_IO_NONALERT,
 		NULL, 0);
 	if (!NT_SUCCESS(ntstatus)) {
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Fail To Open Target Config File, %x\n", ntstatus);
+		DPRINT(CUR_LEVEL,"Fail To Open Target Config File, %x\n", ntstatus);
 	}
 	else {
 #define  BUFFER_SIZE 1024
@@ -957,7 +955,7 @@ void LoadTarget() {
 			TARGET, BUFFER_SIZE, &byteOffset, NULL);
 		if (NT_SUCCESS(ntstatus)) {
 			TARGET[BUFFER_SIZE - 1] = '\0';
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Get Target Config : %ls\n", TARGET);
+			DPRINT(CUR_LEVEL, "Get Target Config : %ls\n", TARGET);
 		}
 		ZwClose(handle);
 		wchar_t *p = TARGET;
@@ -965,10 +963,10 @@ void LoadTarget() {
 			p++;
 		if (*p == '\\') {
 			IS_TARGET_FILE = 0;
-			FORCE_DBG_PRINT("Target is a directory\n");
+			DPRINT(CUR_LEVEL,"Target is a directory\n");
 		}
 		else {
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Target Is File\n");
+			DPRINT(CUR_LEVEL, "Target Is File\n");
 		}
 	}
 }
@@ -998,7 +996,7 @@ void LoadConfig() {
 		FILE_SYNCHRONOUS_IO_NONALERT,
 		NULL, 0);
 	if (!NT_SUCCESS(ntstatus)) {
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Fail To Open Config,%x\n",ntstatus);
+		DPRINT(CUR_LEVEL, "Fail To Open Config,%x\n",ntstatus);
 	}
 	else {
 #define  BUFFER_SIZE 1024
@@ -1009,7 +1007,7 @@ void LoadConfig() {
 			buffer, BUFFER_SIZE, &byteOffset, NULL);
 		if (NT_SUCCESS(ntstatus)) {
 			buffer[BUFFER_SIZE - 1] = '\0';
-			DbgPrint("Get Config : %s\n", buffer);
+			DPRINT(CUR_LEVEL,"Get Config : %s\n", buffer);
 		}
 		ZwClose(handle);
 
@@ -1073,7 +1071,7 @@ PreMyCreate(
 	if (isConfig || isTargetConfig) {
 		if ((Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) ||
 			(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon Config File Create%s%s IO \n",
+			DPRINT(CUR_LEVEL, "Abandon Config File Create%s%s IO \n",
 				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
 				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "");
 			return FLT_PREOP_COMPLETE;
@@ -1084,7 +1082,7 @@ PreMyCreate(
 		if ((!READ_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA) ||
 			(!WRITE_ACCESS && Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA) ||
 			(Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE)) {
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Create%s%s%s IO ,%wZ\n",
+			DPRINT(CUR_LEVEL, "Abandon A File Create%s%s%s IO ,%wZ\n",
 				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_READ_DATA ? " Read" : "",
 				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
 				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "",
@@ -1152,19 +1150,15 @@ PreMyWrite(
 				isTargetConfig = 1;
 		}
 	}
-	// TODO 
-	// All access is not read correctly after startup, so it wont intercept any irp
-	//DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "DBG, status %d, isTarget %d, WRITE_ACCESS %d, READ_ACCESS %d, DELETE_ACCESS %d \n", 
-	//	status, isTarget, WRITE_ACCESS, READ_ACCESS, DELETE_ACCESS);
 
 	if (isTarget && !WRITE_ACCESS) {
 		// Disallow Target File IO
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
+		DPRINT(CUR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
 		return FLT_PREOP_COMPLETE;
 	}
 	else if (isTargetConfig || isConfig) {
 		// Disallow Config File IO
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Write IO\n");
+		DPRINT(CUR_LEVEL, "Abandon A Config File Write IO\n");
 		return FLT_PREOP_COMPLETE;
 	}
 
@@ -1221,7 +1215,7 @@ PreMyRead(
 
 	if (!READ_ACCESS && isTarget) {
 		// Disallow
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
+		DPRINT(CUR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
 		return FLT_PREOP_COMPLETE;
 	}
 
@@ -1288,12 +1282,12 @@ PreMyDelete(
 
 	if (isTarget && !DELETE_ACCESS) {
 		// Disallow Target File IO
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
+		DPRINT(CUR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
 		return FLT_PREOP_COMPLETE;
 	}
 	else if (isConfig || isTargetConfig) {
 		// Disallow Config File IO
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
+		DPRINT(CUR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
 		return FLT_PREOP_COMPLETE;
 	}
 

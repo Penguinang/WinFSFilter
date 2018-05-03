@@ -15,7 +15,7 @@ By now, we cant sign for this driver, which means if you want to try it, you mus
 	write_true
 	delete_true
 ```
-. All the postfix true can be replaced to false, which means you disallow this operation of the target directory(file).The first two line is of no use, you can change them to anything.
+All the postfix `true` can be replaced to `false`, which means you disallow this operation of the target directory(file).The first two line is of no use, you can change them to anything.
 * Move `DriverSetup.exe` to the same directory of `WinFSFilter.sys`, and then use command `DriverSetup.exe install C:\ExampleDirectory\` to install and command `DriverSetup.exe uninstall` to uninstall.Make sure to specify a directory with a postfix `\` and file without postfix `\`.
 
 

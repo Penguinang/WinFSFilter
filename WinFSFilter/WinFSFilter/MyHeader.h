@@ -1,12 +1,13 @@
 #pragma once
 
+#define ERROR 0x0
+#define WARNING 0X1
+#define TRACE 0x2
+#define INFO  0x3
+#define CUR_LEVEL INFO
+#define DPRINT(LEVEL, ...)\
+	DbgPrintEx(DPFLTR_DEFAULT_ID, LEVEL, __VA_ARGS__)
 
-//#define FORCE_DBG_PRINT(_string)					\
-//	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, _string)
-
-// Use error level print to be sure this wont be filtered
-#define FORCE_DBG_PRINT(_string)			\
-	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, _string)
 
 #define FLT_PREOP_FUNC(F)\
 	FLT_PREOP_CALLBACK_STATUS\
@@ -30,7 +31,6 @@
 int READ_ACCESS = 1;
 int WRITE_ACCESS = 1;
 int DELETE_ACCESS = 1;
-//wchar_t *TARGET = L"\\Device\\HarddiskVolume2\\1\\";
 #define  BUFFER_SIZE 1024
 wchar_t TARGET[BUFFER_SIZE] = { 0 };
 int IS_TARGET_FILE = 1;
