@@ -1107,8 +1107,6 @@ PreMyCreate(
 				ReadError();
 			else
 				DeleteError();
-
-			IoRaiseHardError(Data->Iopb->TargetFileObject->DeviceObject->CurrentIrp, FltObjects->FileObject->Vpb, FltObjects->FileObject->DeviceObject);
 			return FLT_PREOP_COMPLETE;
 		}
 	}
