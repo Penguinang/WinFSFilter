@@ -4,7 +4,7 @@
 #define WARNING 0X1
 #define TRACE 0x2
 #define INFO  0x3
-#define CUR_LEVEL INFO
+#define CUR_LEVEL ERROR
 #define DPRINT(LEVEL, ...)\
 	DbgPrintEx(DPFLTR_DEFAULT_ID, LEVEL, __VA_ARGS__)
 
@@ -34,3 +34,19 @@ int DELETE_ACCESS = 1;
 #define  BUFFER_SIZE 1024
 wchar_t TARGET[BUFFER_SIZE] = { 0 };
 int IS_TARGET_FILE = 1;
+
+//_declspec(dllexport) void WriteError();
+//
+//_declspec(dllexport) void ReadError();
+//
+//_declspec(dllexport) void DeleteError();
+
+//typedef void(*ExternWarningFunc)();
+//ExternWarningFunc WriteError;
+//ExternWarningFunc ReadError;
+//ExternWarningFunc DeleteError;
+
+#define EmptyFunction 1 == 1
+#define WriteError() EmptyFunction
+#define ReadError() EmptyFunction
+#define DeleteError() EmptyFunction

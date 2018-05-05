@@ -20,6 +20,9 @@ Environment:
 
 #include"MyHeader.h"
 
+// TODO
+// 还没有正确配置好动态链接库的项目导入设置
+
 #pragma prefast(disable:__WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
 
 
@@ -132,6 +135,7 @@ FLT_POSTOP_FUNC(PostMyDelete);
 
 void LoadConfig();
 void LoadTarget();
+
 
 /*************************************************************************
 	Prototypes End
@@ -581,6 +585,12 @@ Return Value:
 	if (TARGET == NULL) {
 		DPRINT(CUR_LEVEL,"Driver Didn't Start\n");
 	}
+
+	
+	//WriteError = (ExternWarningFunc)MmGetProcedureAddress()
+	/*MmGetProcedureAddress*/
+	//NtRaiseHard
+	//IoRaiseHardError()
 
     //
     //  Register with FltMgr to tell it our callback routines
@@ -1040,7 +1050,7 @@ PreMyCreate(
 	PFLT_FILE_NAME_INFORMATION n, o;
 	PFLT_FILE_NAME_INFORMATION i;
 	NTSTATUS status;
-	int isTarget = 0, isConfig = 0,isTargetConfig = 0;	
+	int isTarget = 0, isConfig = 0,isTargetConfig = 0;
 
 	status = FltGetFileNameInformation(Data, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &n);
 	if (NT_SUCCESS(status)) {
@@ -1074,6 +1084,10 @@ PreMyCreate(
 			DPRINT(CUR_LEVEL, "Abandon Config File Create%s%s IO \n",
 				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
 				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "");
+			if (Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA)
+				WriteError();
+			else
+				DeleteError();
 			return FLT_PREOP_COMPLETE;
 		}
 	}
@@ -1087,6 +1101,14 @@ PreMyCreate(
 				Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA ? " Write" : "",
 				Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE ? " Delete" : "",
 				n->Name);
+			if (Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA)
+				WriteError();
+			else if (Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA)
+				ReadError();
+			else
+				DeleteError();
+
+			IoRaiseHardError(Data->Iopb->TargetFileObject->DeviceObject->CurrentIrp, FltObjects->FileObject->Vpb, FltObjects->FileObject->DeviceObject);
 			return FLT_PREOP_COMPLETE;
 		}
 	}
@@ -1154,11 +1176,13 @@ PreMyWrite(
 	if (isTarget && !WRITE_ACCESS) {
 		// Disallow Target File IO
 		DPRINT(CUR_LEVEL, "Abandon A File Write IO ,%wZ\n", n->Name);
+		WriteError();
 		return FLT_PREOP_COMPLETE;
 	}
 	else if (isTargetConfig || isConfig) {
 		// Disallow Config File IO
 		DPRINT(CUR_LEVEL, "Abandon A Config File Write IO\n");
+		WriteError();
 		return FLT_PREOP_COMPLETE;
 	}
 
@@ -1216,6 +1240,7 @@ PreMyRead(
 	if (!READ_ACCESS && isTarget) {
 		// Disallow
 		DPRINT(CUR_LEVEL, "Abandon A File Read IO ,%wZ\n", n->Name);
+		ReadError();
 		return FLT_PREOP_COMPLETE;
 	}
 
@@ -1283,11 +1308,13 @@ PreMyDelete(
 	if (isTarget && !DELETE_ACCESS) {
 		// Disallow Target File IO
 		DPRINT(CUR_LEVEL, "Abandon A File Deletion (Recycle) IO ,%wZ\n", n->Name);
+		DeleteError();
 		return FLT_PREOP_COMPLETE;
 	}
 	else if (isConfig || isTargetConfig) {
 		// Disallow Config File IO
 		DPRINT(CUR_LEVEL, "Abandon A Config File Deletion (Recycle) IO\n");
+		DeleteError();
 		return FLT_PREOP_COMPLETE;
 	}
 
